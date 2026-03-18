@@ -18,4 +18,5 @@ rm -r "${compressed_target_dir}/${tar_ver}.tar.xz"
 
 # Generate BR/.config using repo's defconfig
 ( cd "$uncompressed_target_dir" && make defconfig BR2_DEFCONFIG=../defconfig )
-echo 'Make sure that defconfig file was actually loaded into BR/.config before starting the initial compilation !!!'
+echo 'To load the defconfig file run `make defconfig BR2_DEFCONFIG=../defconfig` inside BR root directory.'
+echo 'Make sure that defconfig file was properly loaded into BR/.config before starting the initial compilation !!!'
