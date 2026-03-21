@@ -1,0 +1,48 @@
+#!/usr/bin/env sh
+
+# Download and install a specific version of Python in a way it doesn't interfere with system-wide installation.
+#
+# Run the program that depends on this version with:
+# `$ PYTHONHOME=$HOME/.local/opt LD_LIBRARY_PATH=$HOME/.local/opt/lib app`
+#
+# To-do:
+# - Pass the version as cmdline argument.
+#
+# Refs:
+# https://docs.python.org/3/using/configure.html
+
+compressed_target_dir="${HOME}/Downloads"
+tar_ver='3.8.20'
+uncompressed_target_dir="${HOME}/.local/src/python${tar_ver}"
+
+download_src() {
+    # Check if source is already downloaded
+    if [ ! -f "$compressed_target_dir/Python-${tar_ver}.tar.xz" ]; then
+        wget -P "$compressed_target_dir" "https://www.python.org/ftp/python/${tar_ver}/Python-${tar_ver}.tar.xz"
+    fi
+
+    # Check if source is already unpacked
+    if [ ! -d "$uncompressed_target_dir" ]; then
+        mkdir -p "$uncompressed_target_dir" && \
+            tar xvf "${compressed_target_dir}/Python-${tar_ver}.tar.xz" -C "${uncompressed_target_dir}" --strip-components=1
+    else
+        echo "Python version $tar_ver already unpacked in ${uncompressed_target_dir}!"
+    fi
+}
+
+install() {
+    (
+        cd "$uncompressed_target_dir" || return 1
+        ./configure --prefix=$HOME/.local/opt --enable-shared
+        make -s -j $(nproc)
+        make install
+    )
+    return 0
+}
+
+uninstall() {
+    return 0
+}
+
+download_src
+install
