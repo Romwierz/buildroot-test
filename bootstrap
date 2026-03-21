@@ -2,21 +2,25 @@
 compressed_target_dir=.
 uncompressed_target_dir=./buildroot
 tar_ver=buildroot-2026.02
+hash=d54b7ffece06ff28cbb81e28e3de74ea405ca6b77c38fbe8b18fa57bef585f8b
 
-if [ -d "$uncompressed_target_dir" ]; then
-    echo "Buildroot directory already exists!"
-    exit 0
+# Check if BR is already downloaded
+if [ ! -f "$compressed_target_dir/${tar_ver}.tar.xz" ]; then
+    wget -P "$compressed_target_dir" "https://buildroot.org/downloads/${tar_ver}.tar.xz"
 fi
 
-# Download tar.xz and uncompress
-wget -P "$compressed_target_dir" "http://buildroot.org/downloads/${tar_ver}.tar.xz"
-echo d54b7ffece06ff28cbb81e28e3de74ea405ca6b77c38fbe8b18fa57bef585f8b \
-    "${compressed_target_dir}/${tar_ver}.tar.xz" | sha256sum -c || return 1
-mkdir "$uncompressed_target_dir" && \
-    tar xvf ${tar_ver}.tar.xz -C "${uncompressed_target_dir}" --strip-components=1
+# Check if BR is already unpacked
+if [ ! -d "$uncompressed_target_dir" ]; then
+    echo "$hash" "${compressed_target_dir}/${tar_ver}.tar.xz" | sha256sum -c || return 1
+    mkdir "$uncompressed_target_dir" && \
+        tar xvf "${tar_ver}.tar.xz" -C "${uncompressed_target_dir}" --strip-components=1
+else
+    echo "Buildroot directory already exists!"
+fi
+
 rm -r "${compressed_target_dir}/${tar_ver}.tar.xz"
 
 # Generate BR/.config using repo's defconfig
-( cd "$uncompressed_target_dir" && make defconfig BR2_DEFCONFIG=../defconfig )
+# ( cd "$uncompressed_target_dir" && make defconfig BR2_DEFCONFIG=../defconfig )
 echo 'To load the defconfig file run `make defconfig BR2_DEFCONFIG=../defconfig` inside BR root directory.'
 echo 'Make sure that defconfig file was properly loaded into BR/.config before starting the initial compilation !!!'
