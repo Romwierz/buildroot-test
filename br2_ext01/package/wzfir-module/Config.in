@@ -1,0 +1,10 @@
+config BR2_PACKAGE_WZFIR_MODULE
+	bool "wzfir-module"
+	depends on BR2_LINUX_KERNEL
+	help
+          Modules implementing the virtual FIR filters
+
+          http://www.nowhere
+
+comment "wzfir-module needs a Linux kernel to be built"
+	depends on !BR2_LINUX_KERNEL

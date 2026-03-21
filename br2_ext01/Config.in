@@ -1,0 +1,2 @@
+source "$BR2_EXTERNAL_MODULES_PATH/package/wzfir-module/Config.in"
+source "$BR2_EXTERNAL_MODULES_PATH/package/wzfir-app/Config.in"

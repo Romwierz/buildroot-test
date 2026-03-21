@@ -1,0 +1,8 @@
+config BR2_PACKAGE_WZFIR_APP
+	bool "wzfir-app"
+	depends on BR2_LINUX_KERNEL
+	help
+          Application implementing the virtual FIR filters
+
+          http://www.nowhere
+

@@ -1,0 +1,3 @@
+obj-m := my_fir.o
+my_fir-y := src/my_fir.o src/fir_calc.o
+ccflags-y := -I$(src)/src
