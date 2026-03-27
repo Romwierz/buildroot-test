@@ -1,0 +1,9 @@
+This directory contains the source of a sample kernel module.
+It may be built for a target BR platform after sourcing
+of the BR/output/host/evironment-setup. 
+
+The build command is:
+make -C $KERNELDIR M=`pwd` modules
+
+If you want to build the user space application, just run
+make demo

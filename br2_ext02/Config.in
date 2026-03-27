@@ -1,0 +1,2 @@
+source "$BR2_EXTERNAL_TIMER_PATH/package/tim-pci-module/Config.in"
+source "$BR2_EXTERNAL_TIMER_PATH/package/tim-app/Config.in"
