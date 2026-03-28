@@ -1,5 +1,7 @@
 #!/bin/env sh
 
+if [ ! -f .config ]; then echo 'Script must be run from within the BR root directory!'; exit 1; fi
+
 # On running the script, append additional options and arguments if needed
 output/host/bin/qemu-system-aarch64 -M virt -cpu cortex-a53 -nographic -smp 1 -kernel output/images/Image \
 "$@"
@@ -12,5 +14,3 @@ output/host/bin/qemu-system-aarch64 -M virt -cpu cortex-a53 -nographic -smp 1 -k
 
 # To use vde backend append:
 # -nic vde,mac=12:34:5x:ac:31:13
-
-if [ $? -ne 0 ]; then echo 'Script must be run from within the BR root directory!'; fi

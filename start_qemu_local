@@ -1,0 +1,18 @@
+#!/bin/env sh
+# Run the local version of qemu that implements virtual timers.
+# Pass the number of timers to be created as cmdline argument. The default number is 1.
+
+if [ ! -f .config ]; then echo 'Script must be run from within the BR root directory!'; exit 1; fi
+
+# Display cmds before running them
+exe() { echo "\$ $@" ; "$@" ; }
+
+qemu_bin=~/.local/opt/qemu/bin/qemu-system-aarch64
+timers_arg=""
+
+for i in $(seq ${1:-1}); do
+    timers_arg="$timers_arg -device pci-wztim1"
+done
+
+exe "$qemu_bin" -M virt -cpu cortex-a53 -nographic -smp 1 -kernel output/images/Image \
+    -append "loglevel=2" $timers_arg -virtfs local,path=../shared,mount_tag=shared_folder,security_model=mapped
