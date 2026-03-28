@@ -1,4 +1,4 @@
-obj-m := drv_tim1.o
+obj-m := drv_tim1.o drv_tim2.o
 
 
 
