@@ -8,6 +8,8 @@
 //Number of registers
 #define TIM1_REGS_NUM	6
 
+#define MY_PAGE_SIZE 0x1000
+
 typedef struct {
   uint32_t id;
   uint32_t stat;

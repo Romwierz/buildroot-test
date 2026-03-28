@@ -35,15 +35,43 @@ MODULE_LICENSE("GPL v2");
 
 #define BAR0 0
 
+static int tim2_mmap(struct file *file, struct vm_area_struct *vma);
+
 struct timdev {
     struct pci_dev * pdev;
 } mydev;
+
+struct file_operations fops = {
+  .mmap = tim2_mmap,
+};
 
 static const struct pci_device_id tim2_ids_tbl[] = {
     {PCI_DEVICE(PCI_VENDOR_ID_WZAB, PCI_DEVICE_ID_WZAB_WZTIM1)},
     {}
 };
 MODULE_DEVICE_TABLE(pci, tim2_ids_tbl);
+
+// @vma: a pointer to the struct describing virtual memory area
+static int tim2_mmap(struct file *file, struct vm_area_struct *vma) {
+    int status;
+    unsigned long vma_size = vma->vm_end - vma->vm_start;
+    unsigned long phys_addr = pci_resource_start(mydev.pdev, BAR0);
+
+    if(vma_size > MY_PAGE_SIZE)
+        return -EINVAL;
+
+    // Read the physical addr (shifted) of timers' registers into page offset
+    vma->vm_pgoff = phys_addr >> PAGE_SHIFT;
+
+    vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+    status = io_remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff, vma_size, vma->vm_page_prot);
+    if(status) {
+        printk(DRV_MSG_PREFIX "Can't map registers to userspace memory, aborting\n");
+        return -status;
+    }
+
+    return 0;
+}
 
 // @ent: an entry from the device id table
 static int tim2_probe(struct pci_dev * pdev, const struct pci_device_id * ent) {
