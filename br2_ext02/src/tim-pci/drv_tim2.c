@@ -13,6 +13,7 @@
 MODULE_LICENSE("GPL v2");
 #include <linux/device.h>
 #include <linux/fs.h>
+#include <linux/list.h>
 #include <linux/cdev.h>
 #include <linux/sched.h>
 #include <linux/mm.h>
@@ -35,14 +36,25 @@ MODULE_LICENSE("GPL v2");
 
 #define BAR0 0
 
+static int tim2_open(struct inode *inode, struct file *file);
 static int tim2_mmap(struct file *file, struct vm_area_struct *vma);
 
 struct timdev {
     struct pci_dev * pdev;
-} mydev;
+    int minor;
+    unsigned long phys_addr;
+    void __iomem * ptr_bar0;
+    struct list_head list;
+    struct cdev cdev;
+};
+
+LIST_HEAD(device_list);
+static struct mutex lock;
+static int minor_count = 0;
 
 struct file_operations fops = {
-  .mmap = tim2_mmap,
+    .open = tim2_open,
+    .mmap = tim2_mmap,
 };
 
 static const struct pci_device_id tim2_ids_tbl[] = {
@@ -51,17 +63,30 @@ static const struct pci_device_id tim2_ids_tbl[] = {
 };
 MODULE_DEVICE_TABLE(pci, tim2_ids_tbl);
 
+static int tim2_open(struct inode *inode, struct file *file) {
+    struct timdev * mydev;
+    dev_t dev_nr = inode->i_rdev;
+
+    list_for_each_entry(mydev, &device_list, list) {
+        if(mydev->minor == dev_nr) {
+            file->private_data = mydev;
+            return 0;
+        }
+    }
+    return -ENODEV;
+}
+
 // @vma: a pointer to the struct describing virtual memory area
 static int tim2_mmap(struct file *file, struct vm_area_struct *vma) {
-    int status;
+    int status = 0;
     unsigned long vma_size = vma->vm_end - vma->vm_start;
-    unsigned long phys_addr = pci_resource_start(mydev.pdev, BAR0);
+    struct timdev * mydev = (struct timdev *) file->private_data;
 
     if(vma_size > MY_PAGE_SIZE)
         return -EINVAL;
 
     // Read the physical addr (shifted) of timers' registers into page offset
-    vma->vm_pgoff = phys_addr >> PAGE_SHIFT;
+    vma->vm_pgoff = mydev->phys_addr >> PAGE_SHIFT;
 
     vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
     status = io_remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff, vma_size, vma->vm_page_prot);
@@ -70,26 +95,34 @@ static int tim2_mmap(struct file *file, struct vm_area_struct *vma) {
         return -status;
     }
 
-    return 0;
+    return status;
 }
 
 // @ent: an entry from the device id table
 static int tim2_probe(struct pci_dev * pdev, const struct pci_device_id * ent) {
-    int status;
-    void __iomem * ptr_bar0;
-    unsigned long regs_phy_addr;
+    int status = 0;
     volatile WzTim1Regs * regs;
+    struct timdev * mydev = devm_kzalloc(&pdev->dev, sizeof(*mydev), GFP_KERNEL);
+    if(!mydev)
+        return -ENOMEM;
 
-    mydev.pdev = pdev;
-    
-    // Create and register a char device
-    status = register_chrdev(DEVICE_NR, DEVICE_NAME, &fops);
+    // Add character device
+    mutex_lock(&lock);
+    cdev_init(&mydev->cdev, &fops);
+    mydev->cdev.owner = THIS_MODULE;
+    mydev->minor = MKDEV(DEVICE_NR, minor_count++);
+    status = cdev_add(&mydev->cdev, mydev->minor, 1);
     if(status < 0) {
-        printk(DRV_MSG_PREFIX "Can't allocate device number, aborting\n");
-        goto err1;
+        printk(DRV_MSG_PREFIX "Can't add chardev, aborting\n");
+        return status;
     }
+    list_add_tail(&mydev->list, &device_list);
+    mutex_unlock(&lock);
 
+    mydev->pdev = pdev;
+    
     // Enable access to the memory space of the device
+    // todo: if it fails, delete the device from the list, decrement the count, delete cdev
     status = pcim_enable_device(pdev);
     if(status) {
         dev_err(&pdev->dev, DRV_MSG_PREFIX "Can't enable PCI device, aborting\n");
@@ -97,18 +130,20 @@ static int tim2_probe(struct pci_dev * pdev, const struct pci_device_id * ent) {
         goto err1;
     }
 
+    pci_set_master(pdev);
+
     // Get the physical address of timers' registers
-    regs_phy_addr = pci_resource_start(pdev, BAR0);
+    mydev->phys_addr = pci_resource_start(mydev->pdev, BAR0);
     // Map PCI's BAR0 to the pointer (virtual address)
-    ptr_bar0 = pcim_iomap(pdev, BAR0, pci_resource_len(pdev, BAR0));
-    if(!regs_phy_addr || !ptr_bar0) {
+    mydev->ptr_bar0 = pcim_iomap(pdev, BAR0, pci_resource_len(pdev, BAR0));
+    if(!mydev->phys_addr || !mydev->ptr_bar0) {
         dev_err(&pdev->dev, DRV_MSG_PREFIX "Can't map BAR0 of PCI device, aborting\n");
         status = -ENODEV;
         goto err1;
     }
-    printk(KERN_ALERT "Connected registers at %lx\n", regs_phy_addr);
+    printk(KERN_ALERT "Connected registers at %lx\n", mydev->phys_addr);
 
-    regs = (volatile WzTim1Regs *) ptr_bar0;
+    regs = (volatile WzTim1Regs *) mydev->ptr_bar0;
     printk(KERN_ALERT "Timer ID=0x%08X\n", regs->id);
     printk(KERN_ALERT "Timer STAT=0x%08X\n", regs->stat);
 
@@ -117,23 +152,50 @@ err1:
 }
 
 static void tim2_remove(struct pci_dev * pdev) {
+    struct timdev * mydev, * next;
     printk(KERN_ALERT "Removing the device\n");
-    unregister_chrdev(DEVICE_NR, DEVICE_NAME);
+    // 'safe' suffix is required to modify the list
+    list_for_each_entry_safe(mydev, next, &device_list, list) {
+        if(mydev->pdev == pdev) {
+            list_del(&mydev->list);
+            cdev_del(&mydev->cdev);
+        }
+    }
 }
 
 struct pci_driver my_driver = {
-  .name = DEVICE_NAME,
-  .id_table = tim2_ids_tbl,
-  .probe = tim2_probe,
-  .remove = tim2_remove,
+    .name = DEVICE_NAME,
+    .id_table = tim2_ids_tbl,
+    .probe = tim2_probe,
+    .remove = tim2_remove,
 };
 
 static int __init my_init(void) {
-  return pci_register_driver(&my_driver);
+    int status = 0;
+    dev_t dev_nr = MKDEV(DEVICE_NR, 0);
+
+    // Allocate a range of device numbers
+    status = register_chrdev_region(dev_nr, MINORMASK + 1, DEVICE_NAME);
+    if(status < 0) {
+        printk(DRV_MSG_PREFIX "Can't register the device number, aborting\n");
+        return status;
+    }
+
+    mutex_init(&lock);
+    status = pci_register_driver(&my_driver);
+    if(status < 0) {
+        printk(DRV_MSG_PREFIX "Can't register the device driver, aborting\n");
+        unregister_chrdev_region(dev_nr, MINORMASK + 1);
+        return status;
+    }
+
+    return status;
 }
 
 static void __exit my_exit(void) {
-  pci_unregister_driver(&my_driver);
+    dev_t dev_nr = MKDEV(DEVICE_NR, 0);
+	unregister_chrdev_region(dev_nr, MINORMASK + 1);
+    pci_unregister_driver(&my_driver);
 }
 
 module_init(my_init);
