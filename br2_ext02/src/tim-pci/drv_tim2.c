@@ -38,6 +38,8 @@ MODULE_LICENSE("GPL v2");
 
 static int tim2_open(struct inode *inode, struct file *file);
 static int tim2_release(struct inode *inode, struct file *file);
+ssize_t tim2_read(struct file *file, char __user *buf,size_t count, loff_t *off);
+ssize_t tim2_write(struct file *file, const char __user *buf,size_t count, loff_t *off);
 static int tim2_mmap(struct file *file, struct vm_area_struct *vma);
 
 struct timdev {
@@ -54,6 +56,8 @@ static struct mutex lock;
 static int minor_count = 0;
 
 struct file_operations fops = {
+    .read=tim2_read,
+    .write=tim2_write,
     .open = tim2_open,
     .release = tim2_release,
     .mmap = tim2_mmap,
@@ -64,6 +68,8 @@ static const struct pci_device_id tim2_ids_tbl[] = {
     {}
 };
 MODULE_DEVICE_TABLE(pci, tim2_ids_tbl);
+
+DECLARE_KFIFO(rd_fifo, uint64_t, 128);
 
 static int tim2_open(struct inode *inode, struct file *file) {
     struct timdev * mydev;
@@ -88,6 +94,27 @@ static int tim2_release(struct inode *inode, struct file *file) {
     regs->stat = 0; // Mask interrupt
     return 0;
 }
+
+ssize_t tim2_read(struct file *file, char __user *buf, size_t count, loff_t *off) {
+    uint64_t val;
+    if(count != 8) return -EINVAL; // Only 8-byte accesses allowed
+    // Read pointers 
+    if(!kfifo_get(&rd_fifo, &val)) return -EINVAL; 
+    if(copy_to_user(buf, &val, 8)) return -EFAULT;
+    return 8;
+}
+
+ssize_t tim2_write(struct file *file, const char __user *buf, size_t count, loff_t *off) {
+    struct timdev * mydev = file->private_data;
+    uint64_t val;
+    int res = 0; // Workaround. In fact wwe should check the returned value...
+    volatile WzTim1Regs * regs = (volatile WzTim1Regs *) mydev->ptr_bar0;
+    if(count != 8) return -EINVAL; // Only 8-byte access allowed
+    res = __copy_from_user(&val, buf, 8);
+    regs->divh = val >> 32;
+    regs->divl = val & 0xffffffff;  
+    return 8;
+}	
 
 // @vma: a pointer to the struct describing virtual memory area
 static int tim2_mmap(struct file *file, struct vm_area_struct *vma) {
