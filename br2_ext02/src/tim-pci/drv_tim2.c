@@ -41,7 +41,7 @@ static int tim2_mmap(struct file *file, struct vm_area_struct *vma);
 
 struct timdev {
     struct pci_dev * pdev;
-    int minor;
+    int dev_nr;
     unsigned long phys_addr;
     void __iomem * ptr_bar0;
     struct list_head list;
@@ -68,7 +68,7 @@ static int tim2_open(struct inode *inode, struct file *file) {
     dev_t dev_nr = inode->i_rdev;
 
     list_for_each_entry(mydev, &device_list, list) {
-        if(mydev->minor == dev_nr) {
+        if(mydev->dev_nr == dev_nr) {
             file->private_data = mydev;
             return 0;
         }
@@ -110,14 +110,16 @@ static int tim2_probe(struct pci_dev * pdev, const struct pci_device_id * ent) {
     mutex_lock(&lock);
     cdev_init(&mydev->cdev, &fops);
     mydev->cdev.owner = THIS_MODULE;
-    mydev->minor = MKDEV(DEVICE_NR, minor_count++);
-    status = cdev_add(&mydev->cdev, mydev->minor, 1);
+    mydev->dev_nr = MKDEV(DEVICE_NR, minor_count++);
+    status = cdev_add(&mydev->cdev, mydev->dev_nr, 1);
     if(status < 0) {
         printk(DRV_MSG_PREFIX "Can't add chardev, aborting\n");
         return status;
     }
     list_add_tail(&mydev->list, &device_list);
     mutex_unlock(&lock);
+    printk(KERN_ALERT "Added the device with Device Number %d:%d\n",
+            MAJOR(mydev->dev_nr), MINOR(mydev->dev_nr));
 
     mydev->pdev = pdev;
     
@@ -143,6 +145,8 @@ static int tim2_probe(struct pci_dev * pdev, const struct pci_device_id * ent) {
     }
     printk(KERN_ALERT "Connected registers at %lx\n", mydev->phys_addr);
 
+    pci_set_drvdata(pdev, mydev);
+
     regs = (volatile WzTim1Regs *) mydev->ptr_bar0;
     printk(KERN_ALERT "Timer ID=0x%08X\n", regs->id);
     printk(KERN_ALERT "Timer STAT=0x%08X\n", regs->stat);
@@ -152,14 +156,14 @@ err1:
 }
 
 static void tim2_remove(struct pci_dev * pdev) {
-    struct timdev * mydev, * next;
-    printk(KERN_ALERT "Removing the device\n");
-    // 'safe' suffix is required to modify the list
-    list_for_each_entry_safe(mydev, next, &device_list, list) {
-        if(mydev->pdev == pdev) {
-            list_del(&mydev->list);
-            cdev_del(&mydev->cdev);
-        }
+    struct timdev * mydev = (struct timdev *) pci_get_drvdata(pdev);
+    printk(KERN_ALERT "Removing the device with Device Number %d:%d\n",
+            MAJOR(mydev->dev_nr), MINOR(mydev->dev_nr));
+    if(mydev) {
+        mutex_lock(&lock);
+        list_del(&mydev->list);
+        cdev_del(&mydev->cdev);
+        mutex_unlock(&lock);
     }
 }
 
