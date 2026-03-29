@@ -9,10 +9,11 @@ exe() { echo "\$ $@" ; "$@" ; }
 
 qemu_bin=~/.local/opt/qemu/bin/qemu-system-aarch64
 timers_arg=""
+kernel_params="loglevel=2 printk.time=1"
 
 for i in $(seq ${1:-1}); do
     timers_arg="$timers_arg -device pci-wztim1"
 done
 
 exe "$qemu_bin" -M virt -cpu cortex-a53 -nographic -smp 1 -kernel output/images/Image \
-    -append "loglevel=2" $timers_arg -virtfs local,path=../shared,mount_tag=shared_folder,security_model=mapped
+    -append "$kernel_params" $timers_arg -virtfs local,path=../shared,mount_tag=shared_folder,security_model=mapped
