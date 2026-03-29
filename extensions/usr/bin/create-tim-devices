@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+
+devices_num=$(lspci | grep abba:0123 | wc -l)
+major=64
+
+for minor in $(seq 0 $(($devices_num-1))); do
+    mknod /dev/wzab_tim1_$minor c $major $minor
+done
