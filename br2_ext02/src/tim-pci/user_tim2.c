@@ -7,6 +7,8 @@
 #include <assert.h>
 #include <sys/mman.h>
 #include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/sysmacros.h>
 
 #include "wzab_tim1.h"
 
@@ -28,16 +30,32 @@ int main(int argc, char *argv[])
     WzTim1Regs * volatile regs;
     uint64_t res;
     if (argc < 3) {
-        fprintf(stderr, "Usage: %s [device_file] [sampling_period_ns]\n", argv[0]);
+        fprintf(stderr, "Usage: %s device_file sampling_period_ns [count]\n", argv[0]);
         exit(EXIT_FAILURE);
     }
-    uint64_t period = atoi(argv[2]);
+    uint64_t period, count;
+    struct stat st;
+    int major, minor;
+    size_t offset;
+
+    period = atoi(argv[2]);
+    if(argv[3] != NULL)
+        count = atoi(argv[3]);
+    else
+        count = 1;
 
     fd = open(argv[1], O_RDWR);
     assert(fd >= 0);
+    fstat(fd, &st);
+    major = major(st.st_rdev);
+    minor = minor(st.st_rdev);
+    printf("Connected with device: major=%d minor=%d\n", major, minor);
+    offset = minor * 0x100;
 
-    regs = (WzTim1Regs *) mmap(0, MY_PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    regs = (WzTim1Regs *) mmap(NULL, MY_PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    regs = (WzTim1Regs *)((char *)regs + (offset & 0xfff));
     assert(regs != MAP_FAILED);
+    printf("Virtual address of registers: %lx\n", regs);
     //Check if the timer is available
     assert(regs->id == 0x7130900d);
     //There should start our code
@@ -54,7 +72,7 @@ int main(int argc, char *argv[])
     assert(write(fd, &period, 8) == 8);
 
     // Count to 1000
-    for(i = 0; i < 1000; i++) {
+    for(i = 0; i < count; i++) {
         // Wait for pending interrupt
         while (!(regs->stat & 0x80000000));
         // Read the time elapsed since last interrupt

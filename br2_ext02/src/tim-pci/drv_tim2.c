@@ -125,8 +125,12 @@ static int tim2_mmap(struct file *file, struct vm_area_struct *vma) {
     if(vma_size > MY_PAGE_SIZE)
         return -EINVAL;
 
-    // Read the physical addr (shifted) of timers' registers into page offset
+    // Keep in mind that combined size of multiple timers' memory space may not exceed single page size
+    // In such case they share the same memory page, so the virtual memory assigned to userspace app is the same
+    printk(KERN_ALERT "Physical address: %lx\n", mydev->phys_addr);
+    // Read the physical addr of timers' registers shifted into the page offset
     vma->vm_pgoff = mydev->phys_addr >> PAGE_SHIFT;
+    printk(KERN_ALERT "Page offset (physical address shifted by PAGE_SHIFT): %lx\n", vma->vm_pgoff);
 
     vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
     status = io_remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff, vma_size, vma->vm_page_prot);
