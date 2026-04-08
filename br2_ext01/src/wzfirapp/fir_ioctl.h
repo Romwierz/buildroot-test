@@ -1,5 +1,0 @@
-
-#define FIR_TYPE (67)
-#define FIR_IO_DEL (_IO(FIR_TYPE,11))
-#define FIR_IO_COEFFS (_IO(FIR_TYPE,12))
-#define FIR_IO_SAMPLES (_IO(FIR_TYPE,13))

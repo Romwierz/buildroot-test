@@ -1,8 +1,0 @@
-config BR2_PACKAGE_TIM_APP
-	bool "tim-app"
-	depends on BR2_LINUX_KERNEL
-	help
-          Application implementing the virtual timer
-
-          http://www.nowhere
-

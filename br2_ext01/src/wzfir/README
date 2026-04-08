@@ -1,4 +1,0 @@
-Ten przykład ilustruje problemy związane z budową sterowników kompilowanych z kilku plików.
-Ponieważ plik wynikowy (my_fir.ko) ma taką samą nazwę bazową jak jeden z plików źródłowych (my_fir.c),
-ten ostatni nie może być w głównym katalogu źródeł sterownika. Spowodowałoby to "dziwne" problemy
-z kompilacją. Można to wypróbować.
